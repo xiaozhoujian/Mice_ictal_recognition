@@ -15,14 +15,14 @@ from prefetch_generator import BackgroundGenerator
 from models.experimental import attempt_load
 from detection.detect import detect
 import sys
-sys.path.insert(0, '/home/alien/zhangyujia/0613_mice_ictal_recognition/detection')
+# sys.path.insert(0, '/home/alien/zhangyujia/0613_mice_ictal_recognition/detection')
 
-weights = '/home/alien/zhangyujia/0613_mice_ictal_recognition/detection/best.pt'
-device = 'cuda:0'
+# weights = '/home/alien/zhangyujia/0613_mice_ictal_recognition/detection/best.pt'
+# device = 'cuda:0'
 # device = 'cpu'
-detect_model = attempt_load(weights, map_location=device)
-if device != 'cpu':
-    detect_model = detect_model.half()
+# detect_model = attempt_load(weights, map_location=device)
+# if device != 'cpu':
+#     detect_model = detect_model.half()
 
 def center_crop(clip, model, sample_size=112):
     res = []
@@ -39,8 +39,14 @@ def center_crop(clip, model, sample_size=112):
             frame_height, frame_width, _ = clip[i].shape
             if not x_center:
                 x_center = int(frame_width / 2)
-            # x_start = x_center - int(sample_size/2)
-            # x_end = x_center + int(sample_size/2)
+            x_start = x_center - int(sample_size/2)
+            x_end = x_center + int(sample_size/2)
+            if x_start < 0:
+                x_end += -x_start
+                x_start = 0
+            if x_end > frame_width:
+                x_start -= x_end - frame_width
+                x_end = frame_width
             # fix = 30
             # if x_start < fix:
             #     x_start = fix
@@ -49,15 +55,15 @@ def center_crop(clip, model, sample_size=112):
             # if x_end > frame_width - fix:
             #     x_start = frame_width - sample_size - fix
             #     x_end = frame_width - fix
-            if x_center < 44:
-                x_start = 0
-                x_end = 112
-            elif x_center < 156:
-                x_start = 43
-                x_end = 155
-            else:
-                x_start = 87
-                x_end = 199
+            # if x_center < 44:
+            #     x_start = 0
+            #     x_end = 112
+            # elif x_center < 156:
+            #     x_start = 43
+            #     x_end = 155
+            # else:
+            #     x_start = 87
+            #     x_end = 199
 
         # res.append(np.transpose(clip[i][:, x_start:x_end, :] - [114.7748, 107.7354, 99.4750], [2, 1, 0]))
         cropped_clip = clip[i][:, x_start:x_end, :]
@@ -68,7 +74,7 @@ def center_crop(clip, model, sample_size=112):
     return res
 
 
-def get_test_video_online(opt, video_path):
+def get_test_video_online(opt, video_path, detect_model=None):
     """
         Args:
             opt         : config options
@@ -100,39 +106,13 @@ def get_test_video_online(opt, video_path):
                     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     clip.append(frame)
     
-    # pro_clip = center_crop(clip, detect_model)
-    # # for i, crop in enumerate(pro_clip):
-    # #     img = crop.transpose(1, 2, 0).astype(np.uint8)
-    # #     cv2.imshow('img', clip[i])
-    # #     cv2.imshow('img_2', img)
-    # #     cv2.waitKey(0)
-
-    # pro_clip = np.transpose(pro_clip, (1, 0, 2, 3))
-
-    
-    pro_clip = cv2.dnn.blobFromImages(clip, 1.0,
-                (opt.sample_size, opt.sample_size), (114.7748, 107.7354, 99.4750),
-                        swapRB=True, crop=True)
-    # for i, crop in enumerate(pro_clip):
-    #     img = crop.transpose(1, 2, 0).astype(np.uint8)
-    #     cv2.imshow('img', clip[i])
-    #     cv2.imshow('img_2', img)
-    #     cv2.waitKey(0)
-    pro_clip = np.transpose(pro_clip, (1, 0, 2, 3))
-            
-    
-    
-    # pro_clip = cv2.dnn.blobFromImages(clip, 1.0,
-    #         (opt.sample_size, opt.sample_size), (0, 0, 0),
-    #         swapRB=True, crop=True)
-    # for i, crop in enumerate(pro_clip):
-    #     img = crop.transpose(1, 2, 0).astype(np.uint8)
-    #     cv2.imshow('img', clip[i])
-    #     cv2.imshow('img_2', img)
-    #     cv2.waitKey(0)
-    # import pdb; pdb.set_trace()
-    
-    # pro_clip = np.transpose(pro_clip, (1, 0, 2, 3))
+    if detect_model:
+        pro_clip = center_crop(clip, detect_model)
+        pro_clip = np.transpose(pro_clip, (1, 0, 2, 3))
+    else:
+        pro_clip = cv2.dnn.blobFromImages(clip, 1.0, (opt.sample_size, opt.sample_size), (114.7748, 107.7354, 99.4750),
+                                          swapRB=True, crop=True)
+        pro_clip = np.transpose(pro_clip, (1, 0, 2, 3))
 
     return pro_clip
 
@@ -212,7 +192,7 @@ def get_train_video(opt, frame_path, Total_frames):
             Total_frames: Number of frames in the video
         Returns:
             list(frames) : random clip (list of frames of length sample_duration) from a video for training/ validation
-        """
+    """
     clip = []
     i = 0
     loop = 0
@@ -237,7 +217,7 @@ def get_train_video(opt, frame_path, Total_frames):
             if loop==1 and i == Total_frames:
                 i = 0
 
-    elif opt.modality == 'Flow':  
+    elif opt.modality == 'Flow':
         while len(clip) < 2*opt.sample_duration:
             try:
                 im_x = Image.open(os.path.join(frame_path, 'TVL1jpg_x_%05d.jpg'%(start_frame+i+1)))
@@ -249,10 +229,10 @@ def get_train_video(opt, frame_path, Total_frames):
             except:
                 pass
             i += 1
-            
+
             if loop==1 and i == Total_frames:
                 i = 0
-                
+
     elif  opt.modality == 'RGB_Flow':
         while len(clip) < 3*opt.sample_duration:
             try:
@@ -268,15 +248,46 @@ def get_train_video(opt, frame_path, Total_frames):
             except:
                 pass
             i += 1
-            
+
             if loop==1 and i == Total_frames:
                 i = 0
     return clip
 
 
+def get_frames(opt, video_path, train=True):
+    cap = cv2.VideoCapture(video_path)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    if total_frames <= opt.sample_duration:
+        start_frame = 0
+        clip_length = opt.sample_duration
+    else:
+        start_frame = np.random.randint(0, total_frames - opt.sample_duration)
+        clip_length = total_frames if not train else opt.sample_duration
+    clip = []
+    cap.set(1, start_frame)
+    while len(clip) < clip_length:
+        ret, frame = cap.read()
+        if ret:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            if train:
+                frame = Image.fromarray(frame)
+            else:
+                frame = imutils.resize(frame, height=opt.sample_size)
+            clip.append(frame)
+        else:
+            cap.set(1, 0)
+    if train:
+        return scale_crop(clip, int(train), opt)
+    else:
+        pro_clip = cv2.dnn.blobFromImages(clip, 1.0, (opt.sample_size, opt.sample_size),
+                                          (114.7748, 107.7354, 99.4750), swapRB=True, crop=True)
+        pro_clip = np.transpose(pro_clip, (1, 0, 2, 3))
+        return pro_clip
+
+
 class MICE(Dataset):
     """MICE Dataset"""
-    def __init__(self, train, opt, split=None):
+    def __init__(self, train, opt, detect_model=None):
         """
         Args:
             opt   : config options
@@ -287,78 +298,76 @@ class MICE(Dataset):
         """
         self.train_val_test = train
         self.opt = opt
+        self.detect_model = detect_model
         
-        with open(os.path.join(self.opt.annotation_path, "class.txt")) as lab_file:
-            self.lab_names = [line.strip('\n').split(' ')[1] for line in lab_file]
+        with open(os.path.join(self.opt.annotation_path, "class.txt")) as cls_file:
+            # lab_names is class_names [0, 1]
+            self.cls_names = [line.strip('\n').split(' ')[1] for line in cls_file]
         
-        with open(os.path.join(self.opt.annotation_path, "class.txt")) as lab_file:
-            index = [int(line.strip('\n').split(' ')[0]) for line in lab_file]
+        # with open(os.path.join(self.opt.annotation_path, "class.txt")) as lab_file:
+        #     index = [int(line.strip('\n').split(' ')[0]) for line in lab_file]
 
         # Number of classes
-        self.N = len(self.lab_names)
+        self.N = len(self.cls_names)
         assert self.N == 2
 
         # indexes for training/test set
-
         self.data = []        # (filename , lab_id)
         if self.train_val_test == 0:
             filenames = opt.test_file
-            frame_dir = opt.frame_dir
+            # frame_dir = opt.frame_dir
         elif self.train_val_test == 1:
+            # 1 mean it's training
             filenames = opt.train_file
-            frame_dir = opt.frame_dir
+            # frame_dir = opt.frame_dir
         elif self.train_val_test == 2:
             filenames = opt.val_file_1
-            frame_dir = opt.val_path_1
+            # frame_dir = opt.val_path_1
         elif self.train_val_test == 3:
             filenames = opt.val_file_2
-            frame_dir = opt.val_path_2
-
-
+            # frame_dir = opt.val_path_2
+        else:
+            raise Exception("Sorry, --train value should be one of the [0, 1, 2, 3]")
         f = open(os.path.join(self.opt.annotation_path, filenames), 'r')
 
-        # for line in f:
-        #     video_name, class_id = line.strip('\n').split(' #')
-        #     video_path = os.path.join(self.opt.frame_dir, video_name)
-        #     if os.path.exists(video_path) == True:
-        #         self.data.append((video_path, class_id))
-        #     else:
-        #         print('ERROR no such video name {}'.format(video_name))
         for line in f:
-            video_name, class_id = line.strip('\n').split(' #')
-            if self.train_val_test == 1:
-                video_path = os.path.join(frame_dir, video_name)
-            else:
-                video_path = os.path.join(frame_dir, video_name+'.mp4')
-            if os.path.exists(video_path) == True:
+            video_path, class_id = line.strip('\n').split(' #')
+            # if self.train_val_test == 1:
+            #     # only training is reading the frames images
+            #     video_path = os.path.join(frame_dir, video_name)
+            # else:
+            #     video_path = os.path.join(frame_dir, video_name+'.mp4')
+            if os.path.exists(video_path):
                 self.data.append((video_path, class_id))
             else:
-                print('ERROR no such video name {}'.format(video_name))
+                print('ERROR no such video {}'.format(video_path))
         f.close()
+
     def __len__(self):
-        '''
+        """
         returns number of test set
-        ''' 
+        """
         return len(self.data)
 
     def __getitem__(self, idx):
-        video = self.data[idx]
-        label_id = int(video[1])
-        frame_path = video[0]
-        Total_frames = len(glob.glob(glob.escape(frame_path) +  '/0*.jpg'))
+        video_info = self.data[idx]
+        label_id = int(video_info[1])
+        # frame_path = video_info[0]
+        # total_frames = len(glob.glob(glob.escape(frame_path) + '/0*.jpg'))
+        video_path = video_info[0]
 
-        
-        if self.train_val_test == 0: 
-            clip = get_test_video(self.opt, frame_path, Total_frames)
-            return scale_crop(clip, self.train_val_test, self.opt), label_id
-        elif self.train_val_test == 1:
-            clip = get_train_video(self.opt, frame_path, Total_frames)
-            return scale_crop(clip, self.train_val_test, self.opt), label_id
-        elif self.train_val_test == 2 or self.train_val_test == 3:
-            video_path = frame_path
-            clip = get_test_video_online(self.opt, video_path)
-            return clip, label_id        
-        
+        # if self.train_val_test == 0:
+        #     clip = get_test_video(self.opt, frame_path, total_frames)
+        #     return scale_crop(clip, self.train_val_test, self.opt), label_id
+        # elif self.train_val_test == 1:
+        #     clip = get_train_video(self.opt, frame_path, total_frames)
+        #     return scale_crop(clip, self.train_val_test, self.opt), label_id
+        # elif self.train_val_test == 2 or self.train_val_test == 3:
+        #     clip = get_test_video_online(self.opt, video_path)
+        #     return clip, label_id
+        # clip = get_frames(self.opt, video_path, train=True if self.train_val_test == 1 else False)
+        clip = get_test_video_online(self.opt, video_path, self.detect_model)
+        return clip, label_id
 
 
 class MICE_online(Dataset):

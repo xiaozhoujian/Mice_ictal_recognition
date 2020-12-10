@@ -1,50 +1,43 @@
-import glob
 import os
 import random
 
-def make_train_test():
-    train_name = 'train_dataset_4.txt'
-    test_name = 'test_dataset_4.txt'
-    epilepsy_path = '../datasets/mice/dataset_4/pre_case'
-    normal_path = '../datasets/mice/dataset_4/pre_control'
-    train_ratio = 0.75
-    
-    train_epi_samples = []
-    test_epi_samples = []
-    for ori_path, fold, items in os.walk(epilepsy_path):
-        video_num = len(items)
-        random.shuffle(items)
-        train_epi_samples = sorted(items[:int(video_num*train_ratio)])
-        test_epi_samples = sorted(items[int(video_num*train_ratio):])
 
-    for ori_path, fold, items in os.walk(normal_path):
-        video_num = len(items)
-        random.shuffle(items)
-        train_norm_samples = sorted(items[:int(video_num*train_ratio)])
-        test_norm_samples = sorted(items[int(video_num*train_ratio):])
+def split_data(data_path, train_ratio=0.75):
+    items = os.listdir(data_path)
+    video_num = len(items)
+    random.shuffle(items)
+    train_samples = sorted(items[:int(video_num*train_ratio)])
+    test_samples = sorted(items[int(video_num*train_ratio):])
+    return train_samples, test_samples
+
+
+def write2file(samples, source_path, file_obj, class_label):
+    for sample in samples:
+        line = os.path.join(source_path, sample + ' #{}\n'.format(class_label))
+        file_obj.write(line)
+
+
+def make_train_test(case_path, control_path, train_txt, test_case_txt, test_ctl_txt, train_ratio=0.75):
+    # for ori_path, fold, items in os.walk(epilepsy_path):
+    train_case_samples, test_case_samples = split_data(case_path, train_ratio)
+
+    # for ori_path, fold, items in os.walk(normal_path):
+    train_control_samples, test_control_samples = split_data(control_path, train_ratio)
 
     print('Making train list')
-    file = open(train_name, 'w')
-    for i in train_norm_samples:
-        line = os.path.join(normal_path.split('/')[-1], i[:-4])+' #0'
-        file.write(line)
-        file.write('\n')
-    for i in train_epi_samples:
-        line = os.path.join(epilepsy_path.split('/')[-1], i[:-4])+' #1'
-        file.write(line)
-        file.write('\n')
+    file = open(train_txt, 'w')
+    write2file(train_control_samples, control_path, file, '0')
+    write2file(train_case_samples, case_path, file, '1')
+    file.close()
     print('Train list done')
 
     print('Making test list')
-    file = open(test_name, 'w')
-    for i in test_norm_samples:
-        line = os.path.join(normal_path.split('/')[-1], i[:-4])+' #0'
-        file.write(line)
-        file.write('\n')
-    for i in test_epi_samples:
-        line = os.path.join(epilepsy_path.split('/')[-1], i[:-4])+' #1'
-        file.write(line)
-        file.write('\n')
+    control_file_obj = open(test_ctl_txt, 'w')
+    write2file(test_control_samples, control_path, control_file_obj, '0')
+    control_file_obj.close()
+    case_file_obj = open(test_case_txt, 'w')
+    write2file(test_case_samples, case_path, case_file_obj, '1')
+    case_file_obj.close()
     print('Test list done')
 
 
@@ -75,8 +68,8 @@ def make_new_test():
 
 
 def main():
-    # make_train_test()
-    make_new_test()
+    make_train_test()
+    # make_new_test()
     
 
 if __name__ == "__main__":

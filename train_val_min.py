@@ -1,10 +1,6 @@
 from dataset.dataset_val_min import *
 from torch.utils.data import Dataset, DataLoader
-import os
-import numpy as np
 from dataset.preprocess_data import *
-from PIL import Image, ImageFilter
-import argparse
 import torch
 from torch import nn
 from torch import optim
@@ -13,12 +9,10 @@ from models.model import generate_model
 from opts import parse_opts
 from torch.autograd import Variable
 import time
-import sys
 from utils import *
-from loss.focal_loss import FocalLoss
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     opts = parse_opts()
     print(opts)
     
@@ -26,21 +20,27 @@ if __name__=="__main__":
     torch.manual_seed(opts.manual_seed)
 
     print("Preprocessing train data ...")
-    train_data = globals()['{}'.format(opts.dataset)](split = opts.split, train = 1, opt = opts)
+    # train data is frames of different mp4 file
+    train_data = globals()['{}'.format(opts.dataset)](train=1, opt=opts)
     print("Length of train data = ", len(train_data))
 
     print("Preprocessing validation data ...")
-    val_data = globals()['{}'.format(opts.dataset)](split = opts.split, train = 2, opt = opts)
+    # validation data is the mp4 file
+    val_data = globals()['{}'.format(opts.dataset)](train=2, opt=opts)
     print("Length of validation data = ", len(val_data))
     
-    if opts.modality=='RGB': opts.input_channels = 3
-    elif opts.modality=='Flow': opts.input_channels = 2
+    if opts.modality == 'RGB':
+        opts.input_channels = 3
+    elif opts.modality == 'Flow':
+        opts.input_channels = 2
 
     print("Preparing dataloaders ...")
-    train_dataloader = DataLoader(train_data, batch_size = opts.batch_size, shuffle=True, num_workers = opts.n_workers, pin_memory = True, drop_last=True)
-    val_dataloader   = DataLoader(val_data, batch_size = 1, shuffle=True, num_workers = opts.n_workers, pin_memory = True, drop_last=False)
-    print("Length of train dataloader = ",len(train_dataloader))
-    print("Length of validation dataloader = ",len(val_dataloader))    
+    train_dataloader = DataLoader(train_data, batch_size=opts.batch_size, shuffle=True,
+                                  num_workers=opts.n_workers, pin_memory=True, drop_last=True)
+    val_dataloader = DataLoader(val_data, batch_size=1, shuffle=True, num_workers=opts.n_workers,
+                                pin_memory=True, drop_last=False)
+    print("Length of train dataloader = ", len(train_dataloader))
+    print("Length of validation dataloader = ", len(val_dataloader))
    
     # define the model 
     print("Loading model... ", opts.model, opts.model_depth)
@@ -52,30 +52,27 @@ if __name__=="__main__":
     log_path = os.path.join(opts.result_path, opts.dataset)
     if not os.path.exists(log_path):
         os.makedirs(log_path)
-        
+
+    train_log = os.path.join(log_path, '{}_train_clip{}model{}{}.log'.
+                             format(opts.dataset, opts.sample_duration, opts.model, opts.model_depth))
     if opts.log == 1:
         if opts.resume_path1:
             begin_epoch = int(opts.resume_path1.strip('.pth').split('/')[-1].split('_')[1])
-            epoch_logger = Logger(os.path.join(log_path, '{}_train_clip{}model{}{}.log'
-                        .format(opts.dataset, opts.sample_duration, opts.model, opts.model_depth))
-                        ,['epoch', 'loss', 'acc', 'lr'], overlay=False)
-            val_logger   = Logger(os.path.join(log_path, '{}_val_clip{}model{}{}.log'
-                            .format(opts.dataset, opts.sample_duration, opts.model, opts.model_depth))
-                            ,['epoch', 'loss', 'acc'], overlay=False)
+            epoch_logger = Logger(train_log, ['epoch', 'loss', 'acc', 'lr'], overlay=False)
+            val_log = os.path.join(log_path, '{}_val_clip{}model{}{}.log'.
+                                   format(opts.dataset, opts.sample_duration, opts.model, opts.model_depth))
+            val_logger = Logger(val_log, ['epoch', 'loss', 'acc'], overlay=False)
         else:
             begin_epoch = 0
-            epoch_logger = Logger(os.path.join(log_path, '{}_train_clip{}model{}{}.log'
-                        .format(opts.dataset, opts.sample_duration, opts.model, opts.model_depth))
-                        ,['epoch', 'loss', 'acc', 'lr'], overlay=True)
-            val_logger   = Logger(os.path.join(log_path, '{}_val_1_clip{}model{}{}.log'
-                            .format(opts.dataset, opts.sample_duration, opts.model, opts.model_depth))
-                            ,['epoch', 'loss', 'acc'], overlay=True)
+            epoch_logger = Logger(train_log, ['epoch', 'loss', 'acc', 'lr'], overlay=True)
+            val_log = os.path.join(log_path, '{}_val_1_clip{}model{}{}.log'.
+                                   format(opts.dataset, opts.sample_duration, opts.model, opts.model_depth))
+            val_logger = Logger(val_log, ['epoch', 'loss', 'acc'], overlay=True)
             if opts.val_file_2:
-                val_logger_2   = Logger(os.path.join(log_path, '{}_val_2_clip{}model{}{}.log'
-                            .format(opts.dataset, opts.sample_duration, opts.model, opts.model_depth))
-                            ,['epoch', 'loss', 'acc'], overlay=True)
-            
-           
+                val_log2 = os.path.join(log_path, '{}_val_2_clip{}model{}{}.log'.
+                                        format(opts.dataset, opts.sample_duration, opts.model, opts.model_depth))
+                val_logger_2 = Logger(val_log2, ['epoch', 'loss', 'acc'], overlay=True)
+
     print("Initializing the optimizer ...")
     if opts.pretrain_path: 
         opts.weight_decay = 1e-5
@@ -83,14 +80,12 @@ if __name__=="__main__":
         # opts.weight_decay = 5e-4
         # opts.learning_rate = 0.1
 
-    if opts.nesterov: dampening = 0
-    else: dampening = opts.dampening
-        
+    dampening = 0 if opts.nesterov else opts.dampening
+
     print("lr = {} \t momentum = {} \t dampening = {} \t weight_decay = {}, \t nesterov = {}"
                 .format(opts.learning_rate, opts.momentum, dampening, opts. weight_decay, opts.nesterov))
     print("LR patience = ", opts.lr_patience)
-    
-    
+
     optimizer = optim.SGD(
         parameters,
         lr=opts.learning_rate,
@@ -98,7 +93,6 @@ if __name__=="__main__":
         dampening=dampening,
         weight_decay=opts.weight_decay,
         nesterov=opts.nesterov)
-
 
     if opts.resume_path1 != '':
         optimizer.load_state_dict(torch.load(opts.resume_path1)['optimizer'])
@@ -170,12 +164,14 @@ if __name__=="__main__":
             for i, (clip, targets) in enumerate(val_dataloader):
                 clip = torch.squeeze(clip)
                 if opts.modality == 'RGB':
-                    inputs = torch.Tensor(int(clip.shape[1]/opts.sample_duration)+1, 3, opts.sample_duration, opts.sample_size, opts.sample_size)
+                    inputs = torch.Tensor(int(clip.shape[1]/opts.sample_duration)+1, 3, opts.sample_duration,
+                                          opts.sample_size, opts.sample_size)
                 elif opts.modality == 'Flow':
-                    inputs = torch.Tensor(int(clip.shape[1]/opts.sample_duration)+1, 2, opts.sample_duration, opts.sample_size, opts.sample_size)
+                    inputs = torch.Tensor(int(clip.shape[1]/opts.sample_duration)+1, 2, opts.sample_duration,
+                                          opts.sample_size, opts.sample_size)
 
                 for k in range(inputs.shape[0]-1):
-                    inputs[k, :, :, :, :] = clip[:,k*opts.sample_duration:(k+1)*opts.sample_duration,:,:]
+                    inputs[k, :, :, :, :] = clip[:, k*opts.sample_duration:(k+1)*opts.sample_duration, :, :]
                 
                 inputs[-1, :, :, :, :] = clip[:, -opts.sample_duration:, :, :]
                 
@@ -198,10 +194,10 @@ if __name__=="__main__":
                                 
                 accuracies.update(acc, 1)
 
-                line = "Video[" + str(i) + "] :  "  + "\t predict = " + str(pre_label) + "\t true = " +str(int(targets[0])) + "\t acc = " + str(accuracies.avg)
+                line = "Video[" + str(i) + "] :  " + "\t predict = " + str(pre_label) + "\t true = " + \
+                       str(int(targets[0])) + "\t acc = " + str(accuracies.avg)
                 print(line)
         
-
         accuracy_val = accuracies.avg
         if accuracy_val > list(opts.highest_val.values())[0]:
             old_key = list(opts.highest_val.keys())[0]
@@ -211,8 +207,7 @@ if __name__=="__main__":
             opts.highest_val.pop(old_key)
             opts.highest_val['save_{}_max.pth'.format(epoch)] = accuracy_val
 
-            save_file_path = os.path.join(opts.result_path,
-                                        'save_{}_max.pth'.format(epoch))
+            save_file_path = os.path.join(opts.result_path, 'save_{}_max.pth'.format(epoch))
             states = {
                 'epoch': epoch + 1,
                 'arch': opts.arch,
@@ -222,8 +217,7 @@ if __name__=="__main__":
             torch.save(states, save_file_path)
         
         if epoch % 1 == 0:
-            save_file_path = os.path.join(opts.result_path,
-                                        'save_{}.pth'.format(epoch))
+            save_file_path = os.path.join(opts.result_path, 'save_{}.pth'.format(epoch))
             states = {
                 'epoch': epoch + 1,
                 'arch': opts.arch,
@@ -239,20 +233,22 @@ if __name__=="__main__":
             data_time = AverageMeter()
             losses = AverageMeter()
             accuracies = AverageMeter()
-            val_data_2 = globals()['{}'.format(opts.dataset)](split=opts.split, train=3, opt=opts)
-            val_dataloader_2 = DataLoader(val_data_2, batch_size = 1, 
-            shuffle=False, num_workers = opts.n_workers, pin_memory = True, drop_last=False)
+            val_data_2 = globals()['{}'.format(opts.dataset)](train=3, opt=opts)
+            val_dataloader_2 = DataLoader(val_data_2, batch_size=1, shuffle=False, num_workers=opts.n_workers,
+                                          pin_memory=True, drop_last=False)
             print("Length of validation_2 data = ", len(val_data_2))
             with torch.no_grad():
                 for i, (clip, targets) in enumerate(val_dataloader_2):
                     clip = torch.squeeze(clip)
                     if opts.modality == 'RGB':
-                        inputs = torch.Tensor(int(clip.shape[1]/opts.sample_duration)+1, 3, opts.sample_duration, opts.sample_size, opts.sample_size)
+                        inputs = torch.Tensor(int(clip.shape[1]/opts.sample_duration)+1, 3, opts.sample_duration,
+                                              opts.sample_size, opts.sample_size)
                     elif opts.modality == 'Flow':
-                        inputs = torch.Tensor(int(clip.shape[1]/opts.sample_duration)+1, 2, opts.sample_duration, opts.sample_size, opts.sample_size)
+                        inputs = torch.Tensor(int(clip.shape[1]/opts.sample_duration)+1, 2, opts.sample_duration,
+                                              opts.sample_size, opts.sample_size)
 
                     for k in range(inputs.shape[0]-1):
-                        inputs[k, :, :, :, :] = clip[:,k*opts.sample_duration:(k+1)*opts.sample_duration,:,:]
+                        inputs[k, :, :, :, :] = clip[:, k*opts.sample_duration:(k+1)*opts.sample_duration, :, :]
                     
                     inputs[-1, :, :, :, :] = clip[:, -opts.sample_duration:, :, :]
                     
@@ -274,14 +270,8 @@ if __name__=="__main__":
                                     
                     accuracies.update(acc, 1)
 
-                    line = "Video[" + str(i) + "] :  "  + "\t predict = " + str(pre_label) + "\t true = " +str(int(targets[0])) + "\t acc = " + str(accuracies.avg)
+                    line = "Video[" + str(i) + "] :  " + "\t predict = " + str(pre_label) + "\t true = " + \
+                           str(int(targets[0])) + "\t acc = " + str(accuracies.avg)
                     print(line)
             
             val_logger_2.log({'epoch': epoch, 'loss': losses.avg, 'acc': accuracies.avg})
-        
-
-
-        
-
-
-

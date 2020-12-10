@@ -8,6 +8,7 @@ def generate_model(opt):
     assert opt.model_depth in [101]
 
     from models.resnext import get_fine_tuning_parameters
+
     model = resnext.resnet101(
             num_classes=opt.n_classes,
             shortcut_type=opt.resnet_shortcut,
@@ -17,10 +18,9 @@ def generate_model(opt):
             input_channels=opt.input_channels,
             output_layers=opt.output_layers)
     
-
     model = model.cuda()
     model = nn.DataParallel(model)
-    
+
     if opt.pretrain_path:
         print('loading pretrained model {}'.format(opt.pretrain_path))
         pretrain = torch.load(opt.pretrain_path)
@@ -33,15 +33,13 @@ def generate_model(opt):
         return model, parameters
 
     elif opt.resume_path1:
-        pretrain = torch.load(opt.resume_path1)
-        assert opt.arch == pretrain['arch']
+        checkpoint = torch.load(opt.resume_path1)
+        assert opt.arch == checkpoint['arch']
         
-        model.load_state_dict(pretrain['state_dict'])
+        model.load_state_dict(checkpoint['state_dict'])
         parameters = get_fine_tuning_parameters(model, opt.ft_begin_index)
 
         return model, parameters
-
-
 
     return model, model.parameters()
 
